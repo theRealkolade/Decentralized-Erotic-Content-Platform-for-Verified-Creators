@@ -1,6 +1,7 @@
 (define-constant contract-owner tx-sender)
 (define-constant commission-rate u50) ;; 5% platform fee
 (define-constant min-subscription-price u1000000) ;; in microSTX
+(define-constant min-withdrawal-amount u500000) ;; 0.5 STX minimum withdrawal
 
 (define-non-fungible-token content-nft (string-ascii 36))
 (define-non-fungible-token creator-badge (string-ascii 36))
@@ -11,7 +12,8 @@
     verified: bool,
     subscription-price: uint,
     subscriber-count: uint,
-    total-earnings: uint
+    total-earnings: uint,
+    withdrawn-amount: uint
   }
 )
 
@@ -53,7 +55,8 @@
         verified: false,
         subscription-price: subscription-price,
         subscriber-count: u0,
-        total-earnings: u0
+        total-earnings: u0,
+        withdrawn-amount: u0
       }
     )
     (var-set total-creators (+ creator-count u1))
@@ -105,7 +108,7 @@
     )
     (asserts! (get verified creator-data) (err u7))
     
-    (try! (stx-transfer? (- price commission) tx-sender creator))
+    (try! (stx-transfer? (- price commission) tx-sender (as-contract tx-sender)))
     (try! (stx-transfer? commission tx-sender contract-owner))
     
     (map-set subscriptions
@@ -155,7 +158,7 @@
       (price (get price content-data))
       (commission (/ (* price commission-rate) u1000))
     )
-    (try! (stx-transfer? (- price commission) tx-sender creator))
+    (try! (stx-transfer? (- price commission) tx-sender (as-contract tx-sender)))
     (try! (stx-transfer? commission tx-sender contract-owner))
     
     (let
@@ -173,6 +176,42 @@
     )
     (var-set platform-treasury (+ (var-get platform-treasury) commission))
     (ok true)
+  )
+)
+
+(define-public (withdraw-earnings (amount uint))
+  (let
+    (
+      (creator-data (unwrap! (map-get? creators {creator: tx-sender}) (err u10)))
+      (available-balance (- (get total-earnings creator-data) (get withdrawn-amount creator-data)))
+    )
+    (asserts! (get verified creator-data) (err u11))
+    (asserts! (>= amount min-withdrawal-amount) (err u12))
+    (asserts! (<= amount available-balance) (err u13))
+    
+    (try! (stx-transfer? amount (as-contract tx-sender) tx-sender))
+    
+    (map-set creators
+      {creator: tx-sender}
+      (merge creator-data
+        {
+          withdrawn-amount: (+ (get withdrawn-amount creator-data) amount)
+        }
+      )
+    )
+    (ok amount)
+  )
+)
+
+(define-read-only (get-available-balance (creator principal))
+  (let
+    (
+      (creator-data (map-get? creators {creator: creator}))
+    )
+    (match creator-data
+      some-data (- (get total-earnings some-data) (get withdrawn-amount some-data))
+      u0
+    )
   )
 )
 
