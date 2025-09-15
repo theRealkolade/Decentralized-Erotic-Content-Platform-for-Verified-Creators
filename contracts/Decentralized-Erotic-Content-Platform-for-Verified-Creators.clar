@@ -218,3 +218,25 @@
 (define-read-only (get-content-details (content-id (string-ascii 36)))
   (map-get? content-items {content-id: content-id})
 )
+
+(define-public (tip-creator (creator principal) (amount uint))
+  (let
+    (
+      (creator-data (unwrap! (map-get? creators {creator: creator}) (err u14)))
+      (commission (/ (* amount commission-rate) u1000))
+    )
+    (asserts! (get verified creator-data) (err u15))
+    (try! (stx-transfer? (- amount commission) tx-sender (as-contract tx-sender)))
+    (try! (stx-transfer? commission tx-sender contract-owner))
+    (map-set creators
+      {creator: creator}
+      (merge creator-data
+        {
+          total-earnings: (+ (get total-earnings creator-data) (- amount commission))
+        }
+      )
+    )
+    (var-set platform-treasury (+ (var-get platform-treasury) commission))
+    (ok true)
+  )
+)
