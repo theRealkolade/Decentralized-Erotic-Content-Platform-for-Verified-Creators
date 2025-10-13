@@ -240,3 +240,35 @@
     (ok true)
   )
 )
+
+(define-public (gift-subscription (recipient principal) (creator principal))
+  (let
+    (
+      (creator-data (unwrap! (map-get? creators {creator: creator}) (err u16)))
+      (price (get subscription-price creator-data))
+      (commission (/ (* price commission-rate) u1000))
+    )
+    (asserts! (get verified creator-data) (err u17))
+    (asserts! (not (is-eq recipient tx-sender)) (err u18))
+    (try! (stx-transfer? (- price commission) tx-sender (as-contract tx-sender)))
+    (try! (stx-transfer? commission tx-sender contract-owner))
+    (map-set subscriptions
+      {subscriber: recipient, creator: creator}
+      {
+        expires-at: (+ stacks-block-height u1440),
+        active: true
+      }
+    )
+    (map-set creators
+      {creator: creator}
+      (merge creator-data
+        {
+          subscriber-count: (+ (get subscriber-count creator-data) u1),
+          total-earnings: (+ (get total-earnings creator-data) (- price commission))
+        }
+      )
+    )
+    (var-set platform-treasury (+ (var-get platform-treasury) commission))
+    (ok true)
+  )
+)
