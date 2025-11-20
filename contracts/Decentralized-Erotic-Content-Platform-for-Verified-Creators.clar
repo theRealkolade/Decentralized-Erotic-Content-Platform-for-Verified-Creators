@@ -272,3 +272,20 @@
     (ok true)
   )
 )
+
+(define-public (update-subscription-price (new-price uint))
+  (let
+    (
+      (creator-data (unwrap! (map-get? creators {creator: tx-sender}) (err u19)))
+    )
+    (asserts! (get verified creator-data) (err u20))
+    (asserts! (>= new-price min-subscription-price) (err u21))
+    (map-set creators
+      {creator: tx-sender}
+      (merge creator-data
+        {subscription-price: new-price}
+      )
+    )
+    (ok true)
+  )
+)
